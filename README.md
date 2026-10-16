@@ -1,143 +1,79 @@
-# 🟦 Match-3 Puzzle (Unity)
+# Match-3 Puzzle (Unity)
 
-[🇬🇧 English](#english) · [🇹🇷 Türkçe](#türkçe)
+[English](#english) · [Türkçe](#türkçe)
 
-### ▶ [Play it in your browser](https://iamehmetozdemir.github.io/match3-unity/) · [Tarayıcıda oyna](https://iamehmetozdemir.github.io/match3-unity/)
+**Play in your browser:** https://iamehmetozdemir.github.io/match3-unity/
 
 <p align="center">
-  <img src="docs/gameplay.jpg" alt="Gameplay" width="330">
-  &nbsp;&nbsp;
-  <img src="docs/specials.png" alt="Special tiles" width="330">
+  <img src="docs/gameplay.jpg" alt="Gameplay" width="320">
+  &nbsp;
+  <img src="docs/specials.png" alt="Special tiles" width="320">
 </p>
-
----
 
 ## English
 
-A small but complete match-3 puzzle game made with Unity 6 and C#: swap neighbouring tiles, make lines of three or more, build special tiles, chain cascades and reach the target score before you run out of moves. Five levels, hints, animations and a win/lose flow are included.
+A match-3 puzzle game I made in Unity 6 with C#. You swap neighbouring tiles to make lines of three or more, and you have to reach the target score before you run out of moves. There are five levels.
 
-I wanted this to be more than a tutorial clone, so most of the effort went into **how the code is structured** and into **checking that it actually works**, not only into how it looks.
+- Bigger matches make special tiles: 4 in a row makes a rocket (clears a row or column), an L or T shape makes a bomb (3x3 area), and 5 in a row makes a color bomb (clears one color). Specials can trigger each other.
+- Chain reactions score more with every step.
+- If no move is left, the board shuffles. If you stay idle for a few seconds, it shows a hint.
+- There are no art files, all sprites are drawn in code. Every color also has its own shape, so it's readable if you can't tell colors apart.
 
-### Features
+### How the code is organized
 
-- Swap by dragging or by tapping two tiles. Works with mouse and touch.
-- Matches of 3+, with **cascades** (each chain step scores more).
-- **Special tiles** created by bigger matches:
+The game rules live in `Assets/Scripts/Core` and don't use anything from Unity. `MatchEngine.TrySwap` plays out a whole turn at once and returns a plain description of what happened (what was cleared, what fell, what was refilled, for each step of the chain). The Unity side (`Assets/Scripts/Game`) just replays that as animation. This made the rules easy to test without opening Unity, and I could change them without touching the animation code.
 
-  | Match | Creates | Effect |
-  |-------|---------|--------|
-  | 4 in a row | Rocket (↔ or ↕) | clears its row or column |
-  | L or T shape | Bomb | clears the 3×3 area around it |
-  | 5 in a row | Color bomb 🌈 | clears every tile of one color |
+### Tests
 
-  Specials trigger each other (chain reactions), and swapping a color bomb with another tile fires it.
-- No dead boards: if no move is left, the board is shuffled.
-- Idle hint after a few seconds, five levels with growing boards, move limits and score targets.
-- No art files: every sprite is generated in code. Each color also has its own **shape**, so the board is readable for color-blind players.
+- 26 unit tests for the rules (matches, L/T shapes, each special tile, chains, gravity, scoring, shuffling, win/lose).
+- 3 Play Mode tests that start the real game, play 25 turns, and check that what's on screen matches the board.
+- The rules tests also run without Unity: `dotnet test Match3.Core.Tests`.
 
-### How it is built
-
-```
-Assets/
-├── Scripts/
-│   ├── Core/    Match3.Core  – pure C#, no Unity dependency: board, match finding,
-│   │                           special tiles, cascades, game session, levels
-│   └── Game/    Match3.Game  – Unity layer: sprites, animation, input, HUD
-├── Tests/
-│   ├── EditMode/  26 NUnit tests for the game logic
-│   └── PlayMode/  smoke tests that start the real game and play it
-├── Editor/        one-click build script (WebGL / Windows)
-└── WebGLTemplates/
-Match3.Core.Tests/ runs the same logic tests with plain `dotnet test` (no Unity needed)
-```
-
-The key design decision: **the rules live in `Match3.Core` and know nothing about Unity.** `MatchEngine.TrySwap` resolves a whole turn instantly and returns a plain description of what happened (what was cleared, what was created, what fell, what was refilled, per cascade step). The view layer only *replays* that description as animation. That keeps the logic deterministic (seeded random, injectable `IRandom`), unit-testable and easy to change without touching animation code.
-
-### Quality checks
-
-- **26 unit tests** on the game logic: match detection, L/T shapes, every special tile, chain reactions, gravity, cascade scoring, shuffling, win/lose. They run in Unity's Test Runner and also with `dotnet test` in about a second.
-- **Property-style tests**: 200 random boards and over a thousand random turns must never leave matches on the board, empty cells or a board without a move.
-- **3 Play Mode tests** start the real game, play 25 turns and check that what is on screen always matches the board state.
-- **Level balancing by simulation**: a random-move bot and a "greedy" bot (always picks the best immediate move) played every level 300 times. Score targets sit between the two, closer to the greedy bot on later levels. No guessing.
-
-```bash
-dotnet test Match3.Core.Tests          # logic tests, no Unity needed
-```
+I set the score targets by letting a random-move bot and a "best immediate move" bot play each level 300 times, and putting the target between their scores. No human has playtested the difficulty yet.
 
 ### Run it
 
-Requires **Unity 6000.6.6f1** (any Unity 6 version should work).
+You need Unity 6 (I used 6000.6.6f1). Add the folder in Unity Hub, open it and press Play. There's no scene to set up, the game starts itself from code. **Match3 → Build WebGL** in the menu makes the browser version.
 
-1. Clone the repo and add the folder in Unity Hub (**Add → Add project from disk**).
-2. Open it and press **Play**. The game starts itself from code, so there is no scene to set up.
-3. Build with the menu **Match3 → Build WebGL** or **Match3 → Build Windows**. The browser version above is the WebGL build, hosted from the `gh-pages` branch.
+Controls: drag a tile towards a neighbour, or click two neighbouring tiles.
 
-Controls: drag a tile towards a neighbour, or tap two neighbouring tiles.
+### Not done / ideas
 
-### Known limitations / ideas
-
-- The HUD uses Unity's IMGUI to keep the project asset-free; a uGUI/UI Toolkit version would look more polished.
-- Only the score goal exists. Real match-3 games also have collect-goals, obstacles and boosters you can buy.
-- No sound yet.
-- Uses the old Input Manager (touch is mapped to the mouse), not the new Input System.
-
----
+- No sound.
+- The HUD uses Unity's old IMGUI. A proper UI would look better.
+- Only a score goal. Real match-3 games have things like collect goals and obstacles.
+- I haven't tried it on a phone. Touch should work through Unity's mouse emulation, but I haven't checked.
 
 ## Türkçe
 
-Unity 6 ve C# ile yapılmış küçük ama eksiksiz bir match-3 bulmaca oyunu: yan yana taşları kaydır, üçlü ve daha uzun sıralar yap, özel taşlar üret, zincirleme patlatmalar yap ve hamlelerin bitmeden hedef skora ulaş. Beş level, ipucu, animasyonlar ve kazanma/kaybetme akışı var.
+Unity 6 ve C# ile yaptığım bir match-3 bulmaca oyunu. Yan yana taşları değiştirip üçlü ya da daha uzun sıralar yapıyorsun ve hamlelerin bitmeden hedef skora ulaşman gerekiyor. Beş level var.
 
-Bunun bir eğitim videosu kopyası olmasını istemedim; bu yüzden emeğin çoğunu görünüşten çok **kodun nasıl yapılandırıldığına** ve **gerçekten çalıştığının doğrulanmasına** harcadım.
+- Büyük eşleşmeler özel taş yapıyor: 4'lü sıra roket (satır ya da sütunu temizler), L veya T şekli bomba (3x3 alan), 5'li sıra renk bombası (bir rengin hepsini temizler). Özel taşlar birbirini tetikleyebiliyor.
+- Zincirleme patlatmalar her adımda daha çok puan veriyor.
+- Hamle kalmazsa tahta karışıyor. Birkaç saniye hareketsiz kalırsan ipucu gösteriyor.
+- Hiç görsel dosya yok, tüm sprite'lar kodla çizildi. Her rengin kendi şekli de var, renkleri ayıramasan da okunuyor.
 
-### Özellikler
+### Kod nasıl düzenlendi
 
-- Sürükleyerek ya da iki taşa dokunarak yer değiştirme. Fare ve dokunmatik çalışır.
-- 3+ eşleşme ve **zincirleme (cascade)**: her zincir adımı daha çok puan verir.
-- Büyük eşleşmelerle oluşan **özel taşlar**:
+Oyun kuralları `Assets/Scripts/Core` içinde ve Unity'den hiçbir şey kullanmıyor. `MatchEngine.TrySwap` bir hamlenin hepsini bir anda oynayıp ne olduğunu düz veri olarak veriyor (ne temizlendi, ne düştü, ne yeniden doldu, zincirin her adımı için). Unity tarafı (`Assets/Scripts/Game`) bunu sadece animasyon olarak tekrar oynatıyor. Böylece kuralları Unity'yi açmadan test etmek kolay oldu ve animasyon koduna dokunmadan değiştirebildim.
 
-  | Eşleşme | Oluşan | Etkisi |
-  |---------|--------|--------|
-  | 4'lü sıra | Roket (↔ veya ↕) | satırını ya da sütununu temizler |
-  | L veya T şekli | Bomba | çevresindeki 3×3 alanı temizler |
-  | 5'li sıra | Renk bombası 🌈 | bir rengin tüm taşlarını temizler |
+### Testler
 
-  Özel taşlar birbirini tetikler (zincir reaksiyon); renk bombasını başka bir taşla değiştirmek onu patlatır.
-- Hamle kalmazsa tahta otomatik karıştırılır.
-- Birkaç saniye hareketsizlikte ipucu; büyüyen tahtalar, hamle sınırı ve hedef skorlu beş level.
-- Hiç görsel dosya yok: tüm sprite'lar kodla çiziliyor. Her rengin ayrıca kendi **şekli** var, yani renk körleri için de okunaklı.
+- Kurallar için 26 birim test (eşleşmeler, L/T şekilleri, her özel taş, zincirler, yerçekimi, puan, karıştırma, kazanma/kaybetme).
+- Gerçek oyunu başlatıp 25 hamle oynayan ve ekrandakinin tahtayla aynı olduğunu kontrol eden 3 Play Mode testi.
+- Kural testleri Unity olmadan da çalışıyor: `dotnet test Match3.Core.Tests`.
 
-### Nasıl yapıldı
-
-Klasör yapısı yukarıdaki İngilizce bölümde. Ana tasarım kararı: **kurallar `Match3.Core` içinde ve Unity'yi hiç bilmiyor.** `MatchEngine.TrySwap` bir hamlenin tamamını anında çözer ve olanları düz veri olarak döndürür (ne temizlendi, ne oluştu, ne düştü, ne yeniden doldu, her zincir adımı için). Görüntü katmanı bunu sadece animasyon olarak *tekrar oynatır*. Böylece mantık deterministik (tohumlu rastgelelik, enjekte edilebilir `IRandom`), birim testlenebilir ve animasyon koduna dokunmadan değiştirilebilir.
-
-### Kalite kontrolleri
-
-- Oyun mantığı için **26 birim test**: eşleşme bulma, L/T şekilleri, tüm özel taşlar, zincir reaksiyonlar, yerçekimi, zincir puanlama, karıştırma, kazanma/kaybetme. Unity Test Runner'da ve `dotnet test` ile (yaklaşık bir saniyede) çalışır.
-- **Rastgele test**: 200 rastgele tahta ve bin küsur rastgele hamle sonunda tahtada eşleşme, boş hücre ya da hamlesiz durum kalmamalı.
-- **3 Play Mode testi** gerçek oyunu başlatır, 25 hamle oynar ve ekrandakinin her zaman tahta durumuyla aynı olduğunu kontrol eder.
-- **Simülasyonla level dengesi**: rastgele oynayan bir bot ve her zaman en iyi anlık hamleyi seçen "açgözlü" bir bot her level'ı 300'er kez oynadı. Hedef skorlar ikisinin arasında, sonraki level'larda açgözlü bota yakın. Tahmin yok.
-
-```bash
-dotnet test Match3.Core.Tests          # mantık testleri, Unity gerekmez
-```
+Hedef skorları, rastgele oynayan bir bot ile "en iyi anlık hamleyi seçen" bir botun her level'ı 300'er kez oynamasıyla, hedefi ikisinin skoru arasına koyarak ayarladım. Zorluğu henüz bir insan denemedi.
 
 ### Çalıştırma
 
-**Unity 6000.6.6f1** gerekir (herhangi bir Unity 6 sürümü çalışmalı).
+Unity 6 lazım (ben 6000.6.6f1 kullandım). Klasörü Unity Hub'da ekle, aç ve Play'e bas. Kurulacak sahne yok, oyun kendini koddan başlatıyor. Menüdeki **Match3 → Build WebGL** tarayıcı sürümünü çıkarıyor.
 
-1. Repoyu klonla, klasörü Unity Hub'da ekle (**Add → Add project from disk**).
-2. Aç ve **Play**'e bas. Oyun kendini koddan başlatır, kurulacak sahne yok.
-3. **Match3 → Build WebGL** ya da **Match3 → Build Windows** menüsüyle derle. Yukarıdaki tarayıcı sürümü WebGL derlemesi, `gh-pages` branch'inden yayınlanıyor.
+Kontroller: taşı komşusuna doğru sürükle ya da yan yana iki taşa tıkla.
 
-Kontroller: taşı komşusuna doğru sürükle ya da yan yana iki taşa dokun.
+### Yapılmayanlar / fikirler
 
-### Bilinen sınırlar / fikirler
-
-- Projeyi görselsiz tutmak için HUD Unity'nin IMGUI'siyle yapıldı; uGUI/UI Toolkit daha şık olurdu.
-- Sadece skor hedefi var. Gerçek match-3 oyunlarında topla-hedefleri, engeller ve satın alınabilen güçlendiriciler de olur.
-- Henüz ses yok.
-- Yeni Input System değil, eski Input Manager kullanılıyor (dokunma fareye çevrilir).
-
----
-
-MIT License. Code and generated art by Mehmet Devran Özdemir.
+- Ses yok.
+- HUD Unity'nin eski IMGUI'siyle yapıldı. Düzgün bir arayüz daha güzel olurdu.
+- Sadece skor hedefi var. Gerçek match-3 oyunlarında topla-hedefi, engel gibi şeyler de olur.
+- Telefonda denemedim. Dokunma, Unity'nin fare emülasyonuyla çalışmalı ama kontrol etmedim.
