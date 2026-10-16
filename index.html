@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, user-scalable=no">
+    <title>Match3</title>
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; background: #0f1220; overflow: hidden; }
+      #unity-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+      #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+                 justify-content: center; font: 600 18px system-ui, sans-serif; color: #c9cde4; gap: 14px; }
+      #bar { width: min(60vw, 320px); height: 8px; background: #23263d; border-radius: 4px; overflow: hidden; }
+      #fill { width: 0; height: 100%; background: #f5c542; }
+    </style>
+  </head>
+  <body>
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+    <div id="loading"><div>Loading…</div><div id="bar"><div id="fill"></div></div></div>
+    <script src="Build/WebGL.loader.js"></script>
+    <script>
+      createUnityInstance(document.querySelector("#unity-canvas"), {
+        dataUrl: "Build/WebGL.data",
+        frameworkUrl: "Build/WebGL.framework.js",
+        codeUrl: "Build/WebGL.wasm",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "Mehmet Devran Ozdemir",
+        productName: "Match3",
+        productVersion: "1.0",
+      }, function (progress) {
+        document.getElementById("fill").style.width = (progress * 100) + "%";
+      }).then(function () {
+        document.getElementById("loading").style.display = "none";
+      }).catch(function (message) {
+        document.getElementById("loading").textContent = "Could not start the game: " + message;
+      });
+    </script>
+  </body>
+</html>
