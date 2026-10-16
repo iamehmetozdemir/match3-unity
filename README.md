@@ -2,6 +2,8 @@
 
 [🇬🇧 English](#english) · [🇹🇷 Türkçe](#türkçe)
 
+### ▶ [Play it in your browser](https://iamehmetozdemir.github.io/match3-unity/) · [Tarayıcıda oyna](https://iamehmetozdemir.github.io/match3-unity/)
+
 <p align="center">
   <img src="docs/gameplay.jpg" alt="Gameplay" width="330">
   &nbsp;&nbsp;
@@ -68,7 +70,7 @@ Requires **Unity 6000.6.6f1** (any Unity 6 version should work).
 
 1. Clone the repo and add the folder in Unity Hub (**Add → Add project from disk**).
 2. Open it and press **Play**. The game starts itself from code, so there is no scene to set up.
-3. Build with the menu **Match3 → Build WebGL** or **Match3 → Build Windows**.
+3. Build with the menu **Match3 → Build WebGL** or **Match3 → Build Windows**. The browser version above is the WebGL build, hosted from the `gh-pages` branch.
 
 Controls: drag a tile towards a neighbour, or tap two neighbouring tiles.
 
@@ -125,7 +127,7 @@ dotnet test Match3.Core.Tests          # mantık testleri, Unity gerekmez
 
 1. Repoyu klonla, klasörü Unity Hub'da ekle (**Add → Add project from disk**).
 2. Aç ve **Play**'e bas. Oyun kendini koddan başlatır, kurulacak sahne yok.
-3. **Match3 → Build WebGL** ya da **Match3 → Build Windows** menüsüyle derle.
+3. **Match3 → Build WebGL** ya da **Match3 → Build Windows** menüsüyle derle. Yukarıdaki tarayıcı sürümü WebGL derlemesi, `gh-pages` branch'inden yayınlanıyor.
 
 Kontroller: taşı komşusuna doğru sürükle ya da yan yana iki taşa dokun.
 
