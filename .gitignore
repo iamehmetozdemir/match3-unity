@@ -1,0 +1,39 @@
+# Unity generated
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+*.csproj
+!Match3.Core.Tests/*.csproj
+*.sln
+*.slnx
+*.suo
+*.user
+*.pidb
+*.unityproj
+*.apk
+*.aab
+
+# Local test / editor output
+TestResults/
+unity_log.txt
+
+# IDE
+.vs/
+.idea/
+.vscode/
+
+# .NET test project output
+bin/
+obj/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Created by Unity while running Play Mode tests
+Assets/InitTestScene*
