@@ -18,6 +18,9 @@ namespace Match3.Game
         private static readonly Color Frame = new Color(0.09f, 0.10f, 0.17f);
 
         private TileView[,] _views;
+        private SpriteRenderer[,] _ice;
+        private SpriteRenderer[,] _boxes;
+        private Font _font;
         private int _width;
         private int _height;
         private SpriteRenderer _selection;
@@ -26,6 +29,9 @@ namespace Match3.Game
 
         public int Width => _width;
         public int Height => _height;
+
+        /// <summary>Optional; set by the controller.</summary>
+        public SoundFx Sound { get; set; }
 
         /// <summary>Number of tile objects currently shown (should equal the number of filled board cells).</summary>
         public int TileCount
@@ -52,6 +58,8 @@ namespace Match3.Game
             _width = board.Width;
             _height = board.Height;
             _views = new TileView[_width, _height];
+            _ice = new SpriteRenderer[_width, _height];
+            _boxes = new SpriteRenderer[_width, _height];
 
             CreateBackground();
 
@@ -74,6 +82,44 @@ namespace Match3.Game
                     _views[x, y] = view;
                 }
             }
+
+            SyncObstacles(board);
+        }
+
+        /// <summary>Creates, updates or removes the ice and box sprites so they match the board.</summary>
+        private void SyncObstacles(Board board)
+        {
+            for (int y = 0; y < _height; y++)
+            {
+                for (int x = 0; x < _width; x++)
+                {
+                    SyncObstacle(ref _ice[x, y], board.IceAt(x, y), x, y, "Ice", 1, SpriteFactory.Ice);
+                    SyncObstacle(ref _boxes[x, y], board.BoxAt(x, y), x, y, "Box", 9, SpriteFactory.Box);
+                }
+            }
+        }
+
+        private void SyncObstacle(ref SpriteRenderer renderer, int amount, int x, int y, string name, int order, Func<int, Sprite> sprite)
+        {
+            if (amount <= 0)
+            {
+                if (renderer != null) Destroy(renderer.gameObject);
+                renderer = null;
+                return;
+            }
+
+            if (renderer == null)
+            {
+                var go = new GameObject(name);
+                go.transform.SetParent(transform, false);
+                go.transform.localPosition = CellToLocal(x, y);
+                renderer = go.AddComponent<SpriteRenderer>();
+                renderer.sortingOrder = order;
+            }
+            renderer.sprite = sprite(amount);
+            renderer.color = Color.white;
+            renderer.transform.localScale = Vector3.one;
+            renderer.transform.localRotation = Quaternion.identity;
         }
 
         private void CreateBackground()
@@ -85,7 +131,8 @@ namespace Match3.Game
             frameRenderer.color = Frame;
             frameRenderer.sortingOrder = -2;
             frame.transform.localPosition = new Vector3((_width - 1) / 2f, (_height - 1) / 2f, 0);
-            frame.transform.localScale = new Vector3(_width + 0.5f, _height + 0.5f, 1f);
+            // The square sprite's shape fills 78% of the sprite, so scale up to cover the board plus a margin.
+            frame.transform.localScale = new Vector3((_width + 0.3f) / 0.78f, (_height + 0.3f) / 0.78f, 1f);
 
             for (int y = 0; y < _height; y++)
             {
@@ -157,6 +204,7 @@ namespace Match3.Game
                     view.transform.localPosition = CellToLocal(x, y);
                 }
             }
+            SyncObstacles(board);
         }
 
         // ---------- playback ----------
@@ -170,6 +218,7 @@ namespace Match3.Game
             if (va != null) va.Cell = b;
             if (vb != null) vb.Cell = a;
 
+            Sound?.Play(Sfx.Swap);
             var routines = new List<IEnumerator>();
             if (va != null) routines.Add(MoveTo(va, CellToLocal(b.X, b.Y), 0.16f, false));
             if (vb != null) routines.Add(MoveTo(vb, CellToLocal(a.X, a.Y), 0.16f, false));
@@ -183,8 +232,18 @@ namespace Match3.Game
                 CascadeStep step = result.Steps[i];
                 var routines = new List<IEnumerator>();
 
+                PlayStepSounds(step);
+
                 foreach (SpecialActivation activation in step.Activations)
                     routines.Add(PlayActivation(activation));
+
+                foreach (ObstacleHit hit in step.IceCracked)
+                    routines.Add(CrackIce(hit));
+
+                foreach (ObstacleHit hit in step.BoxesHit)
+                    routines.Add(HitBox(hit));
+
+                if (step.Score > 0) SpawnScorePopup(step);
 
                 foreach (ClearedTile cleared in step.Cleared)
                 {
@@ -220,9 +279,19 @@ namespace Match3.Game
                 foreach (TileDrop drop in step.Drops)
                 {
                     TileView view = NewView(drop.Tile, drop.To);
-                    view.transform.localPosition = CellToLocal(drop.To.X, drop.FromY);
                     _views[drop.To.X, drop.To.Y] = view;
-                    routines.Add(Fall(view, drop.To.Y));
+                    if (drop.FromY > drop.To.Y)
+                    {
+                        view.transform.localPosition = CellToLocal(drop.To.X, drop.FromY);
+                        routines.Add(Fall(view, drop.To.Y));
+                    }
+                    else
+                    {
+                        // A cell under a box: the new tile grows in place.
+                        view.transform.localPosition = CellToLocal(drop.To.X, drop.To.Y);
+                        view.Scale = 0f;
+                        routines.Add(Grow(view));
+                    }
                 }
 
                 yield return Parallel(routines);
@@ -239,6 +308,26 @@ namespace Match3.Game
                 for (int x = 0; x < _width; x++)
                     if (_views[x, y] != null) routines.Add(Punch(_views[x, y]));
             yield return Parallel(routines);
+        }
+
+        private void PlayStepSounds(CascadeStep step)
+        {
+            if (Sound == null) return;
+            if (step.Cleared.Count > 0) Sound.Play(Sfx.Match, Mathf.Min(1f + 0.09f * (step.Level - 1), 1.7f));
+            if (step.Created.Count > 0) Sound.Play(Sfx.Special);
+            if (step.IceCracked.Count > 0) Sound.Play(Sfx.Ice, 1f, 0.8f);
+            if (step.BoxesHit.Count > 0) Sound.Play(Sfx.Box);
+
+            bool rocket = false, bomb = false, colorBomb = false;
+            foreach (SpecialActivation a in step.Activations)
+            {
+                rocket |= a.Type == SpecialType.RowRocket || a.Type == SpecialType.ColumnRocket;
+                bomb |= a.Type == SpecialType.Bomb;
+                colorBomb |= a.Type == SpecialType.ColorBomb;
+            }
+            if (rocket) Sound.Play(Sfx.Rocket);
+            if (bomb) Sound.Play(Sfx.Bomb);
+            if (colorBomb) Sound.Play(Sfx.ColorBomb);
         }
 
         // ---------- hint ----------
@@ -327,6 +416,111 @@ namespace Match3.Game
             Vector3 target = CellToLocal(view.Cell.X, targetY);
             float distance = Mathf.Abs(view.transform.localPosition.y - target.y);
             yield return MoveTo(view, target, 0.12f + 0.05f * distance, true);
+        }
+
+        private IEnumerator Grow(TileView view)
+        {
+            yield return Tween(0.22f, t =>
+            {
+                if (view != null) view.Scale = EaseOutBack(t);
+            });
+            if (view != null) view.Scale = 1f;
+        }
+
+        private IEnumerator CrackIce(ObstacleHit hit)
+        {
+            SpriteRenderer ice = _ice[hit.Position.X, hit.Position.Y];
+            if (ice == null) yield break;
+            SpawnBurst(ice.transform.localPosition, new Color(0.85f, 0.95f, 1f));
+
+            if (hit.Remaining > 0)
+            {
+                ice.sprite = SpriteFactory.Ice(hit.Remaining);
+                yield return Tween(0.15f, t => { if (ice != null) ice.transform.localScale = Vector3.one * (1f + 0.12f * Mathf.Sin(t * Mathf.PI)); });
+                yield break;
+            }
+
+            _ice[hit.Position.X, hit.Position.Y] = null;
+            yield return Tween(0.25f, t =>
+            {
+                if (ice == null) return;
+                ice.color = new Color(1f, 1f, 1f, 1f - t);
+                ice.transform.localScale = Vector3.one * (1f + 0.2f * t);
+            });
+            if (ice != null) Destroy(ice.gameObject);
+        }
+
+        private IEnumerator HitBox(ObstacleHit hit)
+        {
+            SpriteRenderer box = _boxes[hit.Position.X, hit.Position.Y];
+            if (box == null) yield break;
+            SpawnBurst(box.transform.localPosition, new Color(0.66f, 0.43f, 0.22f));
+
+            if (hit.Remaining > 0)
+            {
+                box.sprite = SpriteFactory.Box(hit.Remaining);
+                Vector3 home = box.transform.localPosition;
+                yield return Tween(0.2f, t =>
+                {
+                    if (box == null) return;
+                    box.transform.localPosition = home + new Vector3(Mathf.Sin(t * 40f) * 0.06f * (1f - t), 0f, 0f);
+                });
+                if (box != null) box.transform.localPosition = home;
+                yield break;
+            }
+
+            _boxes[hit.Position.X, hit.Position.Y] = null;
+            yield return Tween(0.22f, t =>
+            {
+                if (box == null) return;
+                box.transform.localScale = Vector3.one * (1f + 0.2f * t) * (1f - t);
+                box.transform.localRotation = Quaternion.Euler(0f, 0f, 25f * t);
+            });
+            if (box != null) Destroy(box.gameObject);
+        }
+
+        private void SpawnScorePopup(CascadeStep step)
+        {
+            if (_font == null) _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            if (_font == null) return;
+
+            Vector3 center = Vector3.zero;
+            int count = 0;
+            foreach (ClearedTile c in step.Cleared) { center += CellToLocal(c.Position.X, c.Position.Y); count++; }
+            if (count == 0) return;
+            center /= count;
+
+            var go = new GameObject("Score");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = center + new Vector3(0f, 0f, -0.5f);
+            var text = go.AddComponent<TextMesh>();
+            text.font = _font;
+            text.text = "+" + step.Score;
+            text.fontSize = 64;
+            text.characterSize = 0.05f + 0.006f * Mathf.Min(step.Level, 6);
+            text.anchor = TextAnchor.MiddleCenter;
+            text.alignment = TextAlignment.Center;
+            text.fontStyle = FontStyle.Bold;
+            Color color = step.Level > 1 ? new Color(1f, 0.82f, 0.3f) : Color.white;
+            text.color = color;
+            var renderer = go.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = _font.material;
+            renderer.sortingOrder = 40;
+
+            StartCoroutine(FloatAway(go, text, color));
+        }
+
+        private IEnumerator FloatAway(GameObject go, TextMesh text, Color color)
+        {
+            Vector3 start = go.transform.localPosition;
+            yield return Tween(0.8f, t =>
+            {
+                if (go == null) return;
+                go.transform.localPosition = start + new Vector3(0f, 0.9f * EaseOutQuad(t), 0f);
+                color.a = t < 0.5f ? 1f : 1f - (t - 0.5f) * 2f;
+                text.color = color;
+            });
+            if (go != null) Destroy(go);
         }
 
         private IEnumerator Punch(TileView view)

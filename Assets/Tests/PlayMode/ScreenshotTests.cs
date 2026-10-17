@@ -9,7 +9,7 @@ using UnityEngine.TestTools;
 namespace Match3.PlayTests
 {
     /// <summary>
-    /// Not a real test: renders the running game into docs/ so the README can show it.
+    /// Not a real test: renders the running game into docs/ to check how things look.
     /// Run on demand with the "Screenshots" category.
     /// </summary>
     [Category("Screenshots")]
@@ -22,7 +22,7 @@ namespace Match3.PlayTests
             return Path.Combine(docs, fileName);
         }
 
-        // Renders the main camera into a texture. (The on-screen HUD is IMGUI and is not part of this image.)
+        // Renders the main camera into a texture. (The IMGUI interface is not part of this image.)
         private static void Capture(string fileName)
         {
             Camera cam = Camera.main;
@@ -42,24 +42,26 @@ namespace Match3.PlayTests
         }
 
         [UnityTest]
-        public IEnumerator CaptureGameplay()
+        public IEnumerator CaptureLevels()
         {
             while (GameController.Instance == null) yield return null;
-            yield return new WaitForSeconds(0.5f);
             GameController game = GameController.Instance;
 
-            Capture("board.png");
+            game.StartLevel(Levels.All.Count - 1);
+            yield return new WaitForSeconds(0.3f);
+            Capture("obstacles.png");
 
-            // Play a few turns, then capture a mid-game state.
-            for (int i = 0; i < 4; i++)
+            // Play until some obstacles took damage, then capture again.
+            for (int i = 0; i < 12 && game.Session.State == GameState.Playing; i++)
             {
                 game.Session.Board.TryFindValidMove(out Vec2I a, out Vec2I b);
                 game.TryPlay(a, b);
                 while (game.IsBusy) yield return null;
             }
-            Capture("board-after-moves.png");
+            Capture("obstacles-after-moves.png");
 
-            // Show every special tile type.
+            game.StartLevel(0);
+            yield return null;
             Board board = game.Session.Board;
             board.Set(new Vec2I(1, 4), new Tile(board[1, 4].Color, SpecialType.RowRocket));
             board.Set(new Vec2I(3, 4), new Tile(board[3, 4].Color, SpecialType.ColumnRocket));

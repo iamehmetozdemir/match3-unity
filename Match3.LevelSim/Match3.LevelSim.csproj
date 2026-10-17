@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Plays every level many times with two bots (random moves and "best immediate move")
+    and prints their win rates. Used to tune move counts. Run:
+      dotnet run -c Release (from the Match3.LevelSim folder)
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Assets\Scripts\Core\**\*.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+</Project>

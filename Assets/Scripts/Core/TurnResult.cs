@@ -35,7 +35,10 @@ namespace Match3.Core
         public TileMove(Vec2I from, Vec2I to, Tile tile) { From = from; To = to; Tile = tile; }
     }
 
-    /// <summary>A brand new tile that falls in from above the board. FromY is its starting row (>= board height).</summary>
+    /// <summary>
+    /// A brand new tile. It falls in from row FromY: above the board (FromY >= board height) for a normal column,
+    /// or FromY == To.Y for a cell under a box, where it simply appears.
+    /// </summary>
     public readonly struct TileDrop
     {
         public readonly Vec2I To;
@@ -44,12 +47,22 @@ namespace Match3.Core
         public TileDrop(Vec2I to, Tile tile, int fromY) { To = to; Tile = tile; FromY = fromY; }
     }
 
+    /// <summary>An obstacle (ice layer or box) that took a hit. Remaining 0 means it is gone.</summary>
+    public readonly struct ObstacleHit
+    {
+        public readonly Vec2I Position;
+        public readonly int Remaining;
+        public ObstacleHit(Vec2I position, int remaining) { Position = position; Remaining = remaining; }
+    }
+
     /// <summary>One round of "clear matches, apply gravity, refill".</summary>
     public sealed class CascadeStep
     {
         public int Level;
         public int Score;
         public readonly List<ClearedTile> Cleared = new List<ClearedTile>();
+        public readonly List<ObstacleHit> IceCracked = new List<ObstacleHit>();
+        public readonly List<ObstacleHit> BoxesHit = new List<ObstacleHit>();
         public readonly List<CreatedTile> Created = new List<CreatedTile>();
         public readonly List<SpecialActivation> Activations = new List<SpecialActivation>();
         public readonly List<TileMove> Moves = new List<TileMove>();

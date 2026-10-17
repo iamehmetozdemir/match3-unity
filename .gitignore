@@ -9,6 +9,7 @@
 /[Mm]emoryCaptures/
 *.csproj
 !Match3.Core.Tests/*.csproj
+!Match3.LevelSim/*.csproj
 *.sln
 *.slnx
 *.suo

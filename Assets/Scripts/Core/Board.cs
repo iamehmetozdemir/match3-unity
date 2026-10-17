@@ -6,17 +6,28 @@ namespace Match3.Core
     /// <summary>
     /// The match-3 grid. Coordinates are (x = column, y = row) with y = 0 at the bottom,
     /// so gravity pulls tiles towards smaller y.
+    ///
+    /// Besides tiles, a cell can have two kinds of obstacles:
+    /// - Ice: a layer under the tile. Clearing the tile on top cracks one layer.
+    /// - Box: fills the cell instead of a tile. It does not move, blocks falling tiles,
+    ///   and loses one health when a neighbouring tile is matched or a special tile hits it.
     /// </summary>
     public sealed class Board
     {
         private readonly Tile[,] _cells;
+        private readonly int[,] _ice;
+        private readonly int[,] _box;
         private readonly IRandom _random;
 
         public int Width { get; }
         public int Height { get; }
         public int ColorCount { get; }
 
-        public Board(int width, int height, int colorCount, IRandom random)
+        /// <param name="layoutTopFirst">
+        /// Optional obstacle layout, one string per row from the top: '.' normal cell,
+        /// 'i' / 'I' ice with 1 / 2 layers, 'b' / 'B' box with 1 / 2 health.
+        /// </param>
+        public Board(int width, int height, int colorCount, IRandom random, string[] layoutTopFirst = null)
         {
             if (width < 3 || height < 3) throw new ArgumentException("Board must be at least 3x3.");
             if (colorCount < 3) throw new ArgumentException("At least 3 colors are required.");
@@ -25,6 +36,9 @@ namespace Match3.Core
             ColorCount = colorCount;
             _random = random ?? throw new ArgumentNullException(nameof(random));
             _cells = new Tile[width, height];
+            _ice = new int[width, height];
+            _box = new int[width, height];
+            if (layoutTopFirst != null) ApplyLayout(layoutTopFirst);
             Generate();
         }
 
@@ -35,6 +49,19 @@ namespace Match3.Core
             ColorCount = source.ColorCount;
             _random = source._random;
             _cells = (Tile[,])source._cells.Clone();
+            _ice = (int[,])source._ice.Clone();
+            _box = (int[,])source._box.Clone();
+        }
+
+        private Board(int width, int height, int colorCount, IRandom random, bool skipGenerate)
+        {
+            Width = width;
+            Height = height;
+            ColorCount = colorCount;
+            _random = random;
+            _cells = new Tile[width, height];
+            _ice = new int[width, height];
+            _box = new int[width, height];
         }
 
         /// <summary>
@@ -59,14 +86,28 @@ namespace Match3.Core
             return board;
         }
 
-        private Board(int width, int height, int colorCount, IRandom random, bool skipGenerate)
+        private void ApplyLayout(string[] rowsTopFirst)
         {
-            Width = width;
-            Height = height;
-            ColorCount = colorCount;
-            _random = random;
-            _cells = new Tile[width, height];
+            if (rowsTopFirst.Length != Height) throw new ArgumentException("Layout must have one row per board row.");
+            for (int row = 0; row < Height; row++)
+            {
+                string text = rowsTopFirst[row];
+                if (text.Length != Width) throw new ArgumentException("Layout rows must match the board width.");
+                int y = Height - 1 - row;
+                for (int x = 0; x < Width; x++)
+                {
+                    switch (text[x])
+                    {
+                        case 'i': _ice[x, y] = 1; break;
+                        case 'I': _ice[x, y] = 2; break;
+                        case 'b': _box[x, y] = 1; break;
+                        case 'B': _box[x, y] = 2; break;
+                    }
+                }
+            }
         }
+
+        // ---------- access ----------
 
         public Tile this[int x, int y] => _cells[x, y];
         public Tile this[Vec2I p] => _cells[p.X, p.Y];
@@ -75,6 +116,43 @@ namespace Match3.Core
         public bool InBounds(Vec2I p) => InBounds(p.X, p.Y);
 
         public void Set(Vec2I p, Tile tile) => _cells[p.X, p.Y] = tile;
+
+        public int IceAt(int x, int y) => _ice[x, y];
+        public int IceAt(Vec2I p) => _ice[p.X, p.Y];
+        public void SetIce(Vec2I p, int layers) => _ice[p.X, p.Y] = layers;
+
+        public int BoxAt(int x, int y) => _box[x, y];
+        public int BoxAt(Vec2I p) => _box[p.X, p.Y];
+        public bool HasBox(int x, int y) => _box[x, y] > 0;
+        public bool HasBox(Vec2I p) => _box[p.X, p.Y] > 0;
+
+        /// <summary>Puts a box with the given health in a cell (removing its tile), or removes it with 0.</summary>
+        public void SetBox(Vec2I p, int health)
+        {
+            _box[p.X, p.Y] = health;
+            if (health > 0) _cells[p.X, p.Y] = Tile.Empty;
+        }
+
+        /// <summary>Number of cells that still have ice.</summary>
+        public int IceCellCount
+        {
+            get
+            {
+                int n = 0;
+                foreach (int layers in _ice) if (layers > 0) n++;
+                return n;
+            }
+        }
+
+        public int BoxCount
+        {
+            get
+            {
+                int n = 0;
+                foreach (int health in _box) if (health > 0) n++;
+                return n;
+            }
+        }
 
         public void Swap(Vec2I a, Vec2I b)
         {
@@ -87,7 +165,9 @@ namespace Match3.Core
 
         public int RandomColor() => _random.Next(ColorCount);
 
-        /// <summary>Fills the board with random tiles so that no match exists and at least one move is possible.</summary>
+        // ---------- generation ----------
+
+        /// <summary>Fills every non-box cell with random tiles so that no match exists and at least one move is possible.</summary>
         public void Generate()
         {
             do
@@ -96,6 +176,7 @@ namespace Match3.Core
                 {
                     for (int x = 0; x < Width; x++)
                     {
+                        if (HasBox(x, y)) { _cells[x, y] = Tile.Empty; continue; }
                         int start = RandomColor();
                         for (int i = 0; i < ColorCount; i++)
                         {
@@ -119,6 +200,8 @@ namespace Match3.Core
             return horizontal || vertical;
         }
 
+        // ---------- moves ----------
+
         /// <summary>Is there any swap the player can make? Swaps involving a special tile always count.</summary>
         public bool HasValidMove() => TryFindValidMove(out _, out _);
 
@@ -138,6 +221,22 @@ namespace Match3.Core
             return false;
         }
 
+        /// <summary>All swaps that would be accepted, each listed once.</summary>
+        public List<KeyValuePair<Vec2I, Vec2I>> AllValidMoves()
+        {
+            var moves = new List<KeyValuePair<Vec2I, Vec2I>>();
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                {
+                    var a = new Vec2I(x, y);
+                    if (x + 1 < Width && IsValidSwap(a, new Vec2I(x + 1, y))) moves.Add(new KeyValuePair<Vec2I, Vec2I>(a, new Vec2I(x + 1, y)));
+                    if (y + 1 < Height && IsValidSwap(a, new Vec2I(x, y + 1))) moves.Add(new KeyValuePair<Vec2I, Vec2I>(a, new Vec2I(x, y + 1)));
+                }
+            }
+            return moves;
+        }
+
         private bool IsValidSwap(Vec2I a, Vec2I b)
         {
             Tile ta = this[a];
@@ -152,14 +251,21 @@ namespace Match3.Core
 
         /// <summary>
         /// Rearranges the existing tiles until no match exists and a move is possible.
-        /// Special tiles are kept. Falls back to a fresh board if shuffling keeps failing.
+        /// Special tiles, ice and boxes stay. Falls back to a fresh board if shuffling keeps failing.
         /// </summary>
         public void Shuffle()
         {
             var tiles = new List<Tile>();
+            var slots = new List<Vec2I>();
             for (int y = 0; y < Height; y++)
+            {
                 for (int x = 0; x < Width; x++)
+                {
+                    if (HasBox(x, y)) continue;
+                    slots.Add(new Vec2I(x, y));
                     if (!_cells[x, y].IsEmpty) tiles.Add(_cells[x, y]);
+                }
+            }
 
             for (int attempt = 0; attempt < 100; attempt++)
             {
@@ -171,10 +277,8 @@ namespace Match3.Core
                     tiles[j] = tmp;
                 }
 
-                int index = 0;
-                for (int y = 0; y < Height; y++)
-                    for (int x = 0; x < Width; x++)
-                        _cells[x, y] = index < tiles.Count ? tiles[index++] : Tile.Empty;
+                for (int i = 0; i < slots.Count; i++)
+                    _cells[slots[i].X, slots[i].Y] = i < tiles.Count ? tiles[i] : Tile.Empty;
 
                 if (!MatchFinder.HasAnyMatch(this) && HasValidMove()) return;
             }
@@ -188,7 +292,8 @@ namespace Match3.Core
             for (int row = 0; row < Height; row++)
             {
                 var chars = new List<string>();
-                for (int x = 0; x < Width; x++) chars.Add(_cells[x, Height - 1 - row].ToString());
+                int y = Height - 1 - row;
+                for (int x = 0; x < Width; x++) chars.Add(HasBox(x, y) ? "#" : _cells[x, y].ToString());
                 lines[row] = string.Join(" ", chars);
             }
             return string.Join("\n", lines);

@@ -71,6 +71,141 @@ namespace Match3.Game
             return _circle;
         }
 
+        private static readonly Dictionary<int, Sprite> IceSprites = new Dictionary<int, Sprite>();
+        private static readonly Dictionary<int, Sprite> BoxSprites = new Dictionary<int, Sprite>();
+        private static Sprite _starFilled;
+        private static Sprite _starEmpty;
+        private static Sprite _check;
+
+        /// <summary>Ice under a tile; thicker and whiter with two layers.</summary>
+        public static Sprite Ice(int layers)
+        {
+            layers = Mathf.Clamp(layers, 1, 2);
+            if (!IceSprites.TryGetValue(layers, out Sprite sprite))
+            {
+                sprite = Build((x, y) => IcePixel(layers, x, y));
+                IceSprites[layers] = sprite;
+            }
+            return sprite;
+        }
+
+        /// <summary>Wooden crate; with 2 health it has metal straps.</summary>
+        public static Sprite Box(int health)
+        {
+            health = Mathf.Clamp(health, 1, 2);
+            if (!BoxSprites.TryGetValue(health, out Sprite sprite))
+            {
+                sprite = Build((x, y) => BoxPixel(health, x, y));
+                BoxSprites[health] = sprite;
+            }
+            return sprite;
+        }
+
+        public static Sprite Star(bool filled)
+        {
+            if (filled && _starFilled == null) _starFilled = Build((x, y) => StarPixel(true, x, y));
+            if (!filled && _starEmpty == null) _starEmpty = Build((x, y) => StarPixel(false, x, y));
+            return filled ? _starFilled : _starEmpty;
+        }
+
+        /// <summary>Green circle with a white tick, used for finished goals.</summary>
+        public static Sprite Check()
+        {
+            if (_check == null)
+            {
+                _check = Build((x, y) =>
+                {
+                    float circle = Coverage(Mathf.Sqrt(x * x + y * y) - 0.85f);
+                    if (circle <= 0f) return Color.clear;
+                    float tick = Mathf.Min(Segment(x, y, -0.42f, 0.0f, -0.1f, -0.32f), Segment(x, y, -0.1f, -0.32f, 0.45f, 0.3f)) - 0.11f;
+                    Color c = Color.Lerp(new Color(0.20f, 0.68f, 0.38f), Color.white, Coverage(tick));
+                    c.a = circle;
+                    return c;
+                });
+            }
+            return _check;
+        }
+
+        private static Color IcePixel(int layers, float x, float y)
+        {
+            float d = RoundedBox(x, y, 0.98f, 0.98f, 0.22f);
+            float cov = Coverage(d);
+            if (cov <= 0f) return Color.clear;
+
+            Color c = layers == 1 ? new Color(0.55f, 0.82f, 1f, 0.55f) : new Color(0.78f, 0.93f, 1f, 0.85f);
+            float streak = Mathf.Repeat((x + y) * 2.2f, 1f);
+            if (streak < 0.1f) c = Color.Lerp(c, Color.white, 0.5f);           // frosty diagonal streaks
+            if (d > -0.07f) c = new Color(1f, 1f, 1f, 0.95f);                    // bright rim
+            c.a *= cov;
+            return c;
+        }
+
+        private static Color BoxPixel(int health, float x, float y)
+        {
+            float d = RoundedBox(x, y, 0.92f, 0.92f, 0.12f);
+            float cov = Coverage(d);
+            if (cov <= 0f) return Color.clear;
+
+            var wood = new Color(0.66f, 0.43f, 0.22f);
+            var dark = new Color(0.36f, 0.22f, 0.10f);
+            Color c = wood;
+
+            float plank = Mathf.Repeat((y + 1f) * 2f, 1f);
+            if (plank < 0.07f) c = dark;                                         // gaps between planks
+            if (Mathf.Abs(x - y) < 0.13f) c = new Color(0.76f, 0.52f, 0.28f);   // diagonal brace
+            if (d > -0.14f) c = dark;                                            // frame
+
+            if (health >= 2)
+            {
+                var metal = new Color(0.62f, 0.65f, 0.72f);
+                if (Mathf.Abs(y) > 0.5f && Mathf.Abs(y) < 0.68f) c = metal;     // straps
+                float rx = Mathf.Abs(x) - 0.66f, ry = Mathf.Abs(y) - 0.66f;
+                if (rx * rx + ry * ry < 0.012f) c = Color.white;                 // rivets
+            }
+
+            c.a = cov;
+            return c;
+        }
+
+        private static Color StarPixel(bool filled, float x, float y)
+        {
+            float d = Star5(x, y + 0.06f, 0.92f, 0.45f);
+            float cov = Coverage(d);
+            if (cov <= 0f) return Color.clear;
+            Color c = filled
+                ? Color.Lerp(new Color(1f, 0.70f, 0.10f), new Color(1f, 0.92f, 0.45f), Mathf.Clamp01(0.5f + y * 0.6f))
+                : new Color(0.26f, 0.28f, 0.38f);
+            if (d > -0.06f) c *= 0.75f;
+            c.a = cov;
+            return c;
+        }
+
+        // Signed distance to a five-pointed star (after Inigo Quilez' sdStar5).
+        private static float Star5(float px, float py, float r, float rf)
+        {
+            const float k1x = 0.809016994f, k1y = -0.587785252f;
+            const float k2x = -k1x, k2y = k1y;
+            px = Mathf.Abs(px);
+            float d1 = Mathf.Max(k1x * px + k1y * py, 0f);
+            px -= 2f * d1 * k1x; py -= 2f * d1 * k1y;
+            float d2 = Mathf.Max(k2x * px + k2y * py, 0f);
+            px -= 2f * d2 * k2x; py -= 2f * d2 * k2y;
+            px = Mathf.Abs(px);
+            py -= r;
+            float bax = rf * -k1y, bay = rf * k1x - 1f;
+            float h = Mathf.Clamp((px * bax + py * bay) / (bax * bax + bay * bay), 0f, r);
+            float lx = px - bax * h, ly = py - bay * h;
+            return Mathf.Sqrt(lx * lx + ly * ly) * Mathf.Sign(py * bax - px * bay);
+        }
+
+        private static float Segment(float px, float py, float ax, float ay, float bx, float by)
+        {
+            float pax = px - ax, pay = py - ay, bax = bx - ax, bay = by - ay;
+            float h = Mathf.Clamp01((pax * bax + pay * bay) / (bax * bax + bay * bay));
+            float dx = pax - bax * h, dy = pay - bay * h;
+            return Mathf.Sqrt(dx * dx + dy * dy);
+        }
+
         // ---------- sprite building ----------
 
         private static Sprite Build(Func<float, float, Color> pixel)

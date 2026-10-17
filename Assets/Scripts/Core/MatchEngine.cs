@@ -10,6 +10,8 @@ namespace Match3.Core
     public static class MatchEngine
     {
         public const int PointsPerTile = 10;
+        public const int PointsPerIceLayer = 20;
+        public const int PointsPerBoxHit = 30;
         private const int AnyColor = -3;
         private const int MaxCascadeSteps = 100;
 
@@ -88,11 +90,20 @@ namespace Match3.Core
             var queue = new Queue<Vec2I>();
             var activated = new HashSet<Vec2I>();
             var spawns = new Dictionary<Vec2I, Tile>();
+            var boxesHit = new HashSet<Vec2I>(); // each box takes at most one hit per step
 
             void AddCell(Vec2I p)
             {
-                if (!board.InBounds(p) || board[p].IsEmpty) return;
+                if (!board.InBounds(p)) return;
+                if (board.HasBox(p)) { boxesHit.Add(p); return; }
+                if (board[p].IsEmpty) return;
                 if (clear.Add(p)) queue.Enqueue(p);
+            }
+
+            void HitNeighbourBoxes(Vec2I p)
+            {
+                foreach (Vec2I n in new[] { new Vec2I(p.X + 1, p.Y), new Vec2I(p.X - 1, p.Y), new Vec2I(p.X, p.Y + 1), new Vec2I(p.X, p.Y - 1) })
+                    if (board.InBounds(n) && board.HasBox(n)) boxesHit.Add(n);
             }
 
             void Activate(Vec2I origin, SpecialType type, int targetColor)
@@ -127,7 +138,11 @@ namespace Match3.Core
 
             foreach (MatchGroup group in groups)
             {
-                foreach (Vec2I cell in group.Cells) AddCell(cell);
+                foreach (Vec2I cell in group.Cells)
+                {
+                    AddCell(cell);
+                    HitNeighbourBoxes(cell);
+                }
 
                 SpecialType reward = group.Reward;
                 if (reward != SpecialType.None)
@@ -165,7 +180,30 @@ namespace Match3.Core
                 board.Set(spawn.Key, spawn.Value);
             }
 
-            step.Score = clearedList.Count * PointsPerTile * level;
+            // Ice under every cleared tile (and under a tile that turned into a special) cracks one layer.
+            var iceCells = new List<Vec2I>(clearedList);
+            iceCells.AddRange(spawns.Keys);
+            iceCells.Sort((p, q) => p.Y != q.Y ? p.Y.CompareTo(q.Y) : p.X.CompareTo(q.X));
+            foreach (Vec2I p in iceCells)
+            {
+                int ice = board.IceAt(p);
+                if (ice <= 0) continue;
+                board.SetIce(p, ice - 1);
+                step.IceCracked.Add(new ObstacleHit(p, ice - 1));
+            }
+
+            var boxList = new List<Vec2I>(boxesHit);
+            boxList.Sort((p, q) => p.Y != q.Y ? p.Y.CompareTo(q.Y) : p.X.CompareTo(q.X));
+            foreach (Vec2I p in boxList)
+            {
+                int health = board.BoxAt(p) - 1;
+                board.SetBox(p, health);
+                step.BoxesHit.Add(new ObstacleHit(p, health));
+            }
+
+            step.Score = clearedList.Count * PointsPerTile * level
+                         + step.IceCracked.Count * PointsPerIceLayer
+                         + step.BoxesHit.Count * PointsPerBoxHit;
             ApplyGravityAndRefill(board, step);
             return step;
         }
@@ -193,34 +231,48 @@ namespace Match3.Core
             return best;
         }
 
+        // Boxes split a column into segments. Tiles fall within their segment; the top segment is refilled
+        // from above the board, and a segment under a box gets new tiles that appear in place.
         private static void ApplyGravityAndRefill(Board board, CascadeStep step)
         {
             for (int x = 0; x < board.Width; x++)
             {
-                int writeY = 0;
-                for (int y = 0; y < board.Height; y++)
+                int y = 0;
+                while (y < board.Height)
                 {
-                    Tile t = board[x, y];
-                    if (t.IsEmpty) continue;
-                    if (y != writeY)
-                    {
-                        var from = new Vec2I(x, y);
-                        var to = new Vec2I(x, writeY);
-                        board.Set(to, t);
-                        board.Set(from, Tile.Empty);
-                        step.Moves.Add(new TileMove(from, to, t));
-                    }
-                    writeY++;
-                }
+                    if (board.HasBox(x, y)) { y++; continue; }
 
-                int fresh = 0;
-                for (int y = writeY; y < board.Height; y++)
-                {
-                    Tile t = Tile.Colored(board.RandomColor());
-                    var to = new Vec2I(x, y);
-                    board.Set(to, t);
-                    step.Drops.Add(new TileDrop(to, t, board.Height + fresh));
-                    fresh++;
+                    int start = y, end = y;
+                    while (end < board.Height && !board.HasBox(x, end)) end++;
+                    bool topSegment = end == board.Height;
+
+                    int writeY = start;
+                    for (int yy = start; yy < end; yy++)
+                    {
+                        Tile t = board[x, yy];
+                        if (t.IsEmpty) continue;
+                        if (yy != writeY)
+                        {
+                            var from = new Vec2I(x, yy);
+                            var to = new Vec2I(x, writeY);
+                            board.Set(to, t);
+                            board.Set(from, Tile.Empty);
+                            step.Moves.Add(new TileMove(from, to, t));
+                        }
+                        writeY++;
+                    }
+
+                    int fresh = 0;
+                    for (int yy = writeY; yy < end; yy++)
+                    {
+                        Tile t = Tile.Colored(board.RandomColor());
+                        var to = new Vec2I(x, yy);
+                        board.Set(to, t);
+                        step.Drops.Add(new TileDrop(to, t, topSegment ? board.Height + fresh : yy));
+                        fresh++;
+                    }
+
+                    y = end;
                 }
             }
         }

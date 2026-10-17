@@ -33,22 +33,46 @@ namespace Match3.PlayTests
             Assert.IsFalse(GameController.Instance.IsBusy, "turn animation never finished");
         }
 
+        private static int FilledCells(Board board) => board.Width * board.Height - board.BoxCount;
+
         [UnityTest]
-        public IEnumerator GameStartsItselfAndShowsAFullBoard()
+        public IEnumerator GameStartsInTheMenu_AndALevelShowsAFullBoard()
         {
             yield return WaitForController();
             GameController game = GameController.Instance;
+            game.ShowMenu();
+            yield return null;
+            Assert.IsTrue(game.InMenu);
+            Assert.IsNull(game.Session);
 
+            game.StartLevel(0);
+            yield return null;
+            Assert.IsFalse(game.InMenu);
             Assert.AreEqual(GameState.Playing, game.Session.State);
-            Assert.AreEqual(game.Session.Board.Width * game.Session.Board.Height, game.BoardView.TileCount);
+            Assert.AreEqual(FilledCells(game.Session.Board), game.BoardView.TileCount);
             Assert.IsNotNull(Camera.main);
         }
 
         [UnityTest]
-        public IEnumerator PlayingManyTurnsKeepsViewAndBoardInSync()
+        public IEnumerator EveryLevelLoads()
         {
             yield return WaitForController();
             GameController game = GameController.Instance;
+            for (int i = 0; i < Levels.All.Count; i++)
+            {
+                game.StartLevel(i);
+                yield return null;
+                Assert.AreEqual(FilledCells(game.Session.Board), game.BoardView.TileCount, Levels.All[i].Name);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator PlayingManyTurnsWithObstacles_KeepsViewAndBoardInSync()
+        {
+            yield return WaitForController();
+            GameController game = GameController.Instance;
+            game.StartLevel(Levels.All.Count - 1); // the last level has boxes, ice and a collect goal
+            yield return null;
             int played = 0;
 
             for (int i = 0; i < 25 && game.Session.State == GameState.Playing; i++)
@@ -59,7 +83,7 @@ namespace Match3.PlayTests
                 played++;
 
                 Board board = game.Session.Board;
-                Assert.AreEqual(board.Width * board.Height, game.BoardView.TileCount, "tile views out of sync after turn " + played);
+                Assert.AreEqual(FilledCells(board), game.BoardView.TileCount, "tile views out of sync after turn " + played);
             }
 
             Assert.Greater(played, 3);
@@ -71,6 +95,8 @@ namespace Match3.PlayTests
         {
             yield return WaitForController();
             GameController game = GameController.Instance;
+            game.StartLevel(0);
+            yield return null;
             int movesBefore = game.Session.MovesLeft;
 
             // Find an adjacent pair that does not make a match.
@@ -96,7 +122,7 @@ namespace Match3.PlayTests
             yield return WaitUntilIdle();
 
             Assert.AreEqual(movesBefore, game.Session.MovesLeft);
-            Assert.AreEqual(board.Width * board.Height, game.BoardView.TileCount);
+            Assert.AreEqual(FilledCells(board), game.BoardView.TileCount);
         }
     }
 }
