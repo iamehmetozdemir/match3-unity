@@ -21,6 +21,11 @@ namespace Match3.Game
         private SpriteRenderer[,] _ice;
         private SpriteRenderer[,] _boxes;
         private Font _font;
+
+        // Tiles and sparks are reused instead of created and destroyed on every match,
+        // which keeps garbage collection spikes away on phones.
+        private readonly Stack<TileView> _tilePool = new Stack<TileView>();
+        private readonly Stack<SpriteRenderer> _sparkPool = new Stack<SpriteRenderer>();
         private int _width;
         private int _height;
         private SpriteRenderer _selection;
@@ -51,6 +56,8 @@ namespace Match3.Game
         {
             StopAllCoroutines();
             for (int i = transform.childCount - 1; i >= 0; i--) Destroy(transform.GetChild(i).gameObject);
+            _tilePool.Clear();
+            _sparkPool.Clear();
             transform.position = Vector3.zero;
             _hint = null;
             _hinted.Clear();
@@ -152,10 +159,28 @@ namespace Match3.Game
 
         private TileView NewView(Tile tile, Vec2I cell)
         {
-            TileView view = TileView.Create(transform);
+            TileView view;
+            if (_tilePool.Count > 0)
+            {
+                view = _tilePool.Pop();
+                view.gameObject.SetActive(true);
+            }
+            else
+            {
+                view = TileView.Create(transform);
+            }
+            view.Scale = 1f;
+            view.transform.localRotation = Quaternion.identity;
+            view.SetSortingBoost(0);
             view.SetTile(tile);
             view.Cell = cell;
             return view;
+        }
+
+        private void ReleaseView(TileView view)
+        {
+            view.gameObject.SetActive(false);
+            _tilePool.Push(view);
         }
 
         public static Vector3 CellToLocal(int x, int y) => new Vector3(x, y, 0f);
@@ -188,7 +213,7 @@ namespace Match3.Game
                     TileView view = _views[x, y];
                     if (tile.IsEmpty)
                     {
-                        if (view != null) Destroy(view.gameObject);
+                        if (view != null) ReleaseView(view);
                         _views[x, y] = null;
                         continue;
                     }
@@ -547,39 +572,73 @@ namespace Match3.Game
                 if (view == null) return;
                 view.Scale = t < 0.3f ? 1f + 0.25f * (t / 0.3f) : 1.25f * (1f - (t - 0.3f) / 0.7f);
             });
-            if (view != null) Destroy(view.gameObject);
+            if (view != null) ReleaseView(view);
         }
 
         private void SpawnBurst(Vector3 localPosition, Color color)
         {
             for (int i = 0; i < 5; i++)
             {
-                var go = new GameObject("Spark");
-                go.transform.SetParent(transform, false);
-                go.transform.localPosition = localPosition;
-                var r = go.AddComponent<SpriteRenderer>();
-                r.sprite = SpriteFactory.Circle();
+                SpriteRenderer r;
+                if (_sparkPool.Count > 0)
+                {
+                    r = _sparkPool.Pop();
+                    r.gameObject.SetActive(true);
+                }
+                else
+                {
+                    var go = new GameObject("Spark");
+                    go.transform.SetParent(transform, false);
+                    r = go.AddComponent<SpriteRenderer>();
+                    r.sprite = SpriteFactory.Circle();
+                    r.sortingOrder = 18;
+                }
+                r.transform.localPosition = localPosition;
                 r.color = color;
-                r.sortingOrder = 18;
                 float angle = UnityEngine.Random.value * Mathf.PI * 2f;
                 var direction = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f);
                 float speed = 0.8f + UnityEngine.Random.value * 0.9f;
-                StartCoroutine(Spark(go, r, direction * speed));
+                StartCoroutine(Spark(r, direction * speed));
             }
         }
 
-        private IEnumerator Spark(GameObject go, SpriteRenderer renderer, Vector3 velocity)
+        private IEnumerator Spark(SpriteRenderer renderer, Vector3 velocity)
         {
-            Vector3 start = go.transform.localPosition;
+            Transform t0 = renderer.transform;
+            Vector3 start = t0.localPosition;
             Color color = renderer.color;
             yield return Tween(0.35f, t =>
             {
-                if (go == null) return;
-                go.transform.localPosition = start + velocity * t;
-                go.transform.localScale = Vector3.one * 0.18f * (1f - t);
+                if (renderer == null) return;
+                t0.localPosition = start + velocity * t;
+                t0.localScale = Vector3.one * 0.18f * (1f - t);
                 color.a = 1f - t;
                 renderer.color = color;
             });
+            if (renderer == null) yield break;
+            renderer.gameObject.SetActive(false);
+            _sparkPool.Push(renderer);
+        }
+
+        /// <summary>The hammer booster swinging down on a cell.</summary>
+        public IEnumerator PlayHammer(Vec2I cell)
+        {
+            var go = new GameObject("Hammer");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = CellToLocal(cell.X, cell.Y) + new Vector3(0.35f, 0.45f, 0f);
+            var r = go.AddComponent<SpriteRenderer>();
+            r.sprite = SpriteFactory.Hammer();
+            r.sortingOrder = 30;
+            go.transform.localScale = Vector3.one * 1.3f;
+
+            yield return Tween(0.2f, t =>
+            {
+                if (go != null) go.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Lerp(50f, -15f, EaseOutQuad(t)));
+            });
+            Sound?.Play(Sfx.Box);
+            SpawnBurst(CellToLocal(cell.X, cell.Y), Color.white);
+            yield return Shake(0.15f, 0.08f);
+            yield return Tween(0.12f, t => { if (go != null) r.color = new Color(1f, 1f, 1f, 1f - t); });
             if (go != null) Destroy(go);
         }
 

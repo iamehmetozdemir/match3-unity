@@ -38,6 +38,7 @@ namespace Match3.Game
         private float _idleTimer;
         private bool _hintShown;
         private float _levelStartTime;
+        private bool _hammerArmed;
 
         private bool _dragging;
         private bool _swipeDone;
@@ -107,8 +108,25 @@ namespace Match3.Game
             _dragging = false;
             _idleTimer = 0f;
             _hintShown = false;
+            _hammerArmed = false;
             _levelStartTime = Time.time;
             FitCamera();
+        }
+
+        /// <summary>Uses the shuffle booster, as if the player did it. False if it can't be used now.</summary>
+        public bool TryShuffle()
+        {
+            if (_busy || _session == null || _session.State != GameState.Playing || _session.Shuffles <= 0) return false;
+            StartCoroutine(ShuffleRoutine());
+            return true;
+        }
+
+        /// <summary>Uses the hammer booster on a cell, as if the player did it. False if it can't be used now.</summary>
+        public bool TryHammer(Vec2I cell)
+        {
+            if (_busy || _session == null || _session.State != GameState.Playing || _session.Hammers <= 0) return false;
+            StartCoroutine(HammerRoutine(cell));
+            return true;
         }
 
         /// <summary>Plays a swap exactly as if the player had made it. Returns false if input is currently blocked.</summary>
@@ -143,7 +161,7 @@ namespace Match3.Game
         {
             float unit = Hud.Unit;
             float hudPixels = unit * 7f;
-            float bottomPixels = unit;
+            float bottomPixels = unit * 3.8f; // room for the booster buttons
             float available = Mathf.Max(1f, UnityEngine.Screen.height - hudPixels - bottomPixels);
 
             float pixelsPerUnit = Mathf.Min(available / (_boardView.Height + 0.5f), UnityEngine.Screen.width / (_boardView.Width + 0.6f));
@@ -164,6 +182,13 @@ namespace Match3.Game
                 _hintShown = false;
                 _idleTimer = 0f;
                 _boardView.StopHint();
+
+                if (_hammerArmed)
+                {
+                    if (_boardView.TryGetCell(world, out Vec2I target)) TryHammer(target);
+                    _dragging = false;
+                    return;
+                }
 
                 if (_boardView.TryGetCell(world, out Vec2I cell) && !_session.Board.HasBox(cell))
                 {
@@ -271,6 +296,43 @@ namespace Match3.Game
 
             _boardView.Resync(_session.Board);
             HandleLevelEnd();
+            _busy = false;
+        }
+
+        private IEnumerator HammerRoutine(Vec2I cell)
+        {
+            _busy = true;
+            _hammerArmed = false;
+            _boardView.StopHint();
+            ClearSelection();
+
+            TurnResult result = _session.UseHammer(cell);
+            if (result.Valid)
+            {
+                yield return _boardView.PlayHammer(cell);
+                yield return _boardView.PlayResult(result, _session.Board);
+                if (result.Reshuffled) yield return _boardView.PlayReshuffle(_session.Board);
+            }
+
+            _boardView.Resync(_session.Board);
+            HandleLevelEnd();
+            _busy = false;
+        }
+
+        private IEnumerator ShuffleRoutine()
+        {
+            _busy = true;
+            _hammerArmed = false;
+            _boardView.StopHint();
+            ClearSelection();
+
+            if (_session.UseShuffle().Valid)
+            {
+                _sound.Play(Sfx.Special);
+                yield return _boardView.PlayReshuffle(_session.Board);
+            }
+
+            _boardView.Resync(_session.Board);
             _busy = false;
         }
 
@@ -400,8 +462,46 @@ namespace Match3.Game
                 Hud.GoalChip(chip, _session.Goals[i]);
             }
 
+            if (_session.State == GameState.Playing) DrawBoosters();
             if (Time.time - _levelStartTime < BannerTime && _session.State == GameState.Playing) DrawBanner();
             if (!_busy && _session.State != GameState.Playing) DrawEndPanel();
+        }
+
+        // Booster buttons under the board.
+        private void DrawBoosters()
+        {
+            float u = Hud.Unit;
+            float w = UnityEngine.Screen.width;
+            float boardBottom = UnityEngine.Screen.height - _camera.WorldToScreenPoint(new Vector3(0f, -0.75f, 0f)).y;
+            float height = u * 2.4f, width = Mathf.Min(u * 7.5f, w * 0.44f), gap = u * 0.6f;
+            float y = boardBottom + u * 0.5f;
+
+            var hammer = new Rect(w / 2f - gap / 2f - width, y, width, height);
+            var shuffle = new Rect(w / 2f + gap / 2f, y, width, height);
+
+            if (BoosterButton(hammer, SpriteFactory.Hammer(), _hammerArmed ? "Tap a tile" : "Hammer", _session.Hammers, _hammerArmed))
+                _hammerArmed = !_hammerArmed;
+            if (BoosterButton(shuffle, SpriteFactory.Shuffle(), "Shuffle", _session.Shuffles, false))
+                StartCoroutine(ShuffleRoutine());
+        }
+
+        private bool BoosterButton(Rect rect, Sprite icon, string label, int count, bool active)
+        {
+            bool enabled = count > 0 && !_busy;
+            GUI.enabled = enabled;
+            Color previous = GUI.color;
+            if (!enabled) GUI.color = new Color(1f, 1f, 1f, 0.45f);
+
+            bool clicked = Button(rect, "", active);
+            float pad = rect.height * 0.18f;
+            float size = rect.height - pad * 2f;
+            Hud.Icon(new Rect(rect.x + pad, rect.y + pad, size, size), icon);
+            string text = active ? label : label + "  ×" + count;
+            GUI.Label(new Rect(rect.x + size + pad * 1.5f, rect.y, rect.width - size - pad * 2.5f, rect.height), text, active ? Hud.BoosterTextDark : Hud.BoosterText);
+
+            GUI.color = previous;
+            GUI.enabled = true;
+            return clicked;
         }
 
         private void DrawBanner()

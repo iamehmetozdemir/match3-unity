@@ -24,7 +24,7 @@ namespace Match3.Game
         private static readonly Dictionary<Color, Texture2D> RoundedCache = new Dictionary<Color, Texture2D>();
         private static int _styleUnit;
 
-        public static GUIStyle Panel, Chip, Button, SecondaryButton, Title, Heading, Text, Small, Number;
+        public static GUIStyle Panel, Chip, Button, SecondaryButton, Title, Heading, Text, Small, Number, BoosterText, BoosterTextDark;
 
         /// <summary>Base size for text and spacing; follows the smaller screen side so phones in portrait work too.</summary>
         public static float Unit => Mathf.Max(12f, Mathf.Min(Screen.width / 14f, Screen.height / 28f));
@@ -43,6 +43,10 @@ namespace Match3.Game
             Title = TextStyle(unit * 2.4f, TextColor, FontStyle.Bold);
             Heading = TextStyle(unit * 1.5f, TextColor, FontStyle.Bold);
             Text = TextStyle(unit, TextColor, FontStyle.Bold);
+            BoosterText = TextStyle(unit * 0.85f, TextColor, FontStyle.Bold);
+            BoosterText.wordWrap = false;
+            BoosterTextDark = new GUIStyle(BoosterText);
+            BoosterTextDark.normal.textColor = DarkText;
             Small = TextStyle(unit * 0.75f, MutedText, FontStyle.Normal);
             Number = TextStyle(unit * 1.6f, TextColor, FontStyle.Bold);
         }

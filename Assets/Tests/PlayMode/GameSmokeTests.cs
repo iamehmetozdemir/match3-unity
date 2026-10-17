@@ -91,6 +91,36 @@ namespace Match3.PlayTests
         }
 
         [UnityTest]
+        public IEnumerator BoostersWorkInTheRealGame()
+        {
+            yield return WaitForController();
+            GameController game = GameController.Instance;
+            game.StartLevel(4); // Level 5: boxes
+            yield return null;
+
+            Board board = game.Session.Board;
+            Vec2I box = default;
+            for (int y = 0; y < board.Height; y++)
+                for (int x = 0; x < board.Width; x++)
+                    if (board.HasBox(x, y)) box = new Vec2I(x, y);
+            int healthBefore = board.BoxAt(box);
+            int movesBefore = game.Session.MovesLeft;
+
+            Assert.IsTrue(game.TryHammer(box));
+            yield return WaitUntilIdle();
+            Assert.AreEqual(healthBefore - 1, board.BoxAt(box));
+            Assert.AreEqual(0, game.Session.Hammers);
+            Assert.AreEqual(movesBefore, game.Session.MovesLeft, "boosters cost no move");
+            Assert.AreEqual(FilledCells(board), game.BoardView.TileCount);
+            Assert.IsFalse(game.TryHammer(box), "only one hammer per level");
+
+            Assert.IsTrue(game.TryShuffle());
+            yield return WaitUntilIdle();
+            Assert.AreEqual(0, game.Session.Shuffles);
+            Assert.AreEqual(FilledCells(board), game.BoardView.TileCount);
+        }
+
+        [UnityTest]
         public IEnumerator InvalidSwapIsAnimatedBackAndCostsNothing()
         {
             yield return WaitForController();

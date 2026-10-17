@@ -126,6 +126,51 @@ namespace Match3.Game
             return _check;
         }
 
+        private static Sprite _hammer;
+        private static Sprite _shuffle;
+
+        /// <summary>Hammer booster icon: a metal head on a wooden handle, tilted.</summary>
+        public static Sprite Hammer()
+        {
+            if (_hammer == null)
+            {
+                _hammer = Build((x, y) =>
+                {
+                    // Rotate by -35 degrees so the hammer leans to the right.
+                    const float c = 0.819f, s = -0.574f;
+                    float rx = x * c - y * s, ry = x * s + y * c;
+                    float head = RoundedBox(rx, ry - 0.42f, 0.62f, 0.24f, 0.08f);
+                    float handle = RoundedBox(rx, ry + 0.12f, 0.1f, 0.62f, 0.06f);
+                    if (head < handle)
+                    {
+                        Color metal = Color.Lerp(new Color(0.45f, 0.48f, 0.55f), new Color(0.85f, 0.88f, 0.94f), Mathf.Clamp01(0.5f + (ry - 0.42f) * 2f));
+                        metal.a = Coverage(head);
+                        return metal;
+                    }
+                    var wood = new Color(0.62f, 0.40f, 0.20f, Coverage(handle));
+                    return wood;
+                });
+            }
+            return _hammer;
+        }
+
+        /// <summary>Shuffle booster icon: two arrows pointing opposite ways.</summary>
+        public static Sprite Shuffle()
+        {
+            if (_shuffle == null)
+            {
+                _shuffle = Build((x, y) =>
+                {
+                    float top = Mathf.Min(Mathf.Max(Mathf.Abs(x + 0.1f) - 0.5f, Mathf.Abs(y - 0.32f) - 0.1f),
+                                          Triangle(x, y, 0.35f, 0.05f, 0.85f, 0.32f, 0.35f, 0.59f));
+                    float bottom = Mathf.Min(Mathf.Max(Mathf.Abs(x - 0.1f) - 0.5f, Mathf.Abs(y + 0.32f) - 0.1f),
+                                             Triangle(-x, y, 0.35f, -0.59f, 0.85f, -0.32f, 0.35f, -0.05f));
+                    return new Color(1f, 1f, 1f, Coverage(Mathf.Min(top, bottom)));
+                });
+            }
+            return _shuffle;
+        }
+
         private static Color IcePixel(int layers, float x, float y)
         {
             float d = RoundedBox(x, y, 0.98f, 0.98f, 0.22f);
