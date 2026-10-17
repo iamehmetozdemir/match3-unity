@@ -57,6 +57,9 @@ namespace Match3.Core
         public Goal[] Goals;
         /// <summary>Obstacle layout (see <see cref="Board"/>), or null for a plain board.</summary>
         public string[] Layout;
+        /// <summary>Boosters available in the level. They don't cost a move.</summary>
+        public int Hammers = 1;
+        public int Shuffles = 1;
 
         public LevelConfig(string name, int width, int height, int colorCount, int moves, Goal[] goals, string[] layout = null)
         {
@@ -92,6 +95,8 @@ namespace Match3.Core
         public int Score { get; private set; }
         public GameState State { get; private set; } = GameState.Playing;
         public IReadOnlyList<GoalProgress> Goals => _goals;
+        public int Hammers { get; private set; }
+        public int Shuffles { get; private set; }
 
         private readonly List<GoalProgress> _goals = new List<GoalProgress>();
 
@@ -100,6 +105,8 @@ namespace Match3.Core
             Level = level;
             Board = new Board(level.Width, level.Height, level.ColorCount, random, level.Layout);
             MovesLeft = level.Moves;
+            Hammers = level.Hammers;
+            Shuffles = level.Shuffles;
 
             foreach (Goal goal in level.Goals)
             {
@@ -138,6 +145,30 @@ namespace Match3.Core
             if (AllGoalsDone()) State = GameState.Won;
             else if (MovesLeft <= 0) State = GameState.Lost;
             return result;
+        }
+
+        /// <summary>Hammer booster on one cell. Costs no move; does nothing if none are left.</summary>
+        public TurnResult UseHammer(Vec2I target)
+        {
+            if (State != GameState.Playing || Hammers <= 0) return new TurnResult();
+
+            TurnResult result = MatchEngine.Hammer(Board, target);
+            if (!result.Valid) return result;
+
+            Hammers--;
+            Score += result.TotalScore;
+            UpdateGoals(result);
+            if (AllGoalsDone()) State = GameState.Won;
+            return result;
+        }
+
+        /// <summary>Shuffle booster: rearranges the tiles. Costs no move; does nothing if none are left.</summary>
+        public TurnResult UseShuffle()
+        {
+            if (State != GameState.Playing || Shuffles <= 0) return new TurnResult();
+            Board.Shuffle();
+            Shuffles--;
+            return new TurnResult { Valid = true, Reshuffled = true };
         }
 
         private void UpdateGoals(TurnResult result)

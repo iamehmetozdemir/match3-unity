@@ -46,18 +46,40 @@ namespace Match3.Core
             }
 
             result.Valid = true;
-            var preferred = new[] { a, b };
-            int level = 1;
+            RunCascade(board, result, pending, new[] { a, b }, new Vec2I[0]);
+            return result;
+        }
 
+        /// <summary>
+        /// Hammer booster: hits one cell directly. A tile there is cleared (a special tile fires),
+        /// a box loses one health. Then the board settles like after a normal move.
+        /// </summary>
+        public static TurnResult Hammer(Board board, Vec2I target)
+        {
+            var result = new TurnResult();
+            if (!board.InBounds(target)) return result;
+            if (board[target].IsEmpty && !board.HasBox(target)) return result;
+
+            result.Valid = true;
+            RunCascade(board, result, new List<Pending>(), new Vec2I[0], new[] { target });
+            return result;
+        }
+
+        // Clears matches step by step until the board settles; the first step also handles
+        // specials triggered by the swap and cells hit directly by a booster.
+        private static void RunCascade(Board board, TurnResult result, List<Pending> pending, IList<Vec2I> preferred, IList<Vec2I> hitCells)
+        {
+            int level = 1;
             while (level <= MaxCascadeSteps)
             {
                 List<MatchGroup> groups = MatchFinder.FindGroups(board);
-                if (groups.Count == 0 && pending.Count == 0) break;
+                if (groups.Count == 0 && pending.Count == 0 && hitCells.Count == 0) break;
 
-                CascadeStep step = ResolveStep(board, groups, pending, level == 1 ? preferred : new Vec2I[0], level);
+                CascadeStep step = ResolveStep(board, groups, pending, level == 1 ? preferred : new Vec2I[0], hitCells, level);
                 result.Steps.Add(step);
                 result.TotalScore += step.Score;
                 pending.Clear();
+                hitCells = new Vec2I[0];
                 level++;
             }
 
@@ -66,7 +88,6 @@ namespace Match3.Core
                 board.Shuffle();
                 result.Reshuffled = true;
             }
-            return result;
         }
 
         private static void AddSwapEffect(List<Pending> pending, Tile moved, Vec2I position, Tile other)
@@ -83,7 +104,7 @@ namespace Match3.Core
             }
         }
 
-        private static CascadeStep ResolveStep(Board board, List<MatchGroup> groups, List<Pending> pending, IList<Vec2I> preferred, int level)
+        private static CascadeStep ResolveStep(Board board, List<MatchGroup> groups, List<Pending> pending, IList<Vec2I> preferred, IList<Vec2I> hitCells, int level)
         {
             var step = new CascadeStep { Level = level };
             var clear = new HashSet<Vec2I>();
@@ -153,6 +174,7 @@ namespace Match3.Core
             }
 
             foreach (Pending p in pending) Activate(p.Origin, p.Type, p.TargetColor);
+            foreach (Vec2I p in hitCells) AddCell(p);
 
             // Tiles that are cleared and special trigger their own effect (chain reactions).
             while (queue.Count > 0)
