@@ -1,0 +1,18 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core-tests:
+    # The game rules don't depend on Unity, so their tests run with plain .NET.
+    # (The Play Mode tests need the Unity editor and are run locally.)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet test Match3.Core.Tests --logger "console;verbosity=normal"
